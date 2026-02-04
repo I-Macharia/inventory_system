@@ -1,0 +1,11 @@
+venv/
+
+__pycache__/
+
+
+test.ods
+test.xlsx
+Invoice GPM-1572.pdf
+templates/
+stock_report.pdf
+
