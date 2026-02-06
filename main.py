@@ -9,7 +9,7 @@ from app.models import Product, Shop, MasterStock
 from pydantic import BaseModel
 import pandas as pd
 from fastapi import UploadFile, File
-from app.models import Invoice, InvoiceItem, Shop, Product, MasterStock, ConsignmentStock, ConsignmentSale
+from app.models import Invoice, InvoiceItem, Shop, Product, MasterStock, ConsignmentStock, ConsignmentSale, UserRequest, User
 from datetime import date, datetime, timedelta
 from app.services.pdf_parser import parse_invoice_pdf
 from fastapi.templating import Jinja2Templates
@@ -45,7 +45,12 @@ app = FastAPI(title="Inventory System")
 # Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5174", "http://127.0.0.1:5174"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174", 
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -111,6 +116,10 @@ class TokenData(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+    
+class AccessRequest(BaseModel):
+    name: str
+    email: str
 
 
 @app.post("/login", response_model=Token)
@@ -131,6 +140,20 @@ async def login(credentials: LoginRequest):
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+@app.post("/auth/request-access")
+def request_access(data: AccessRequest, db: Session = Depends(get_db)):
+    existing = db.query(UserRequest).filter_by(email=data.email).first()
+    if existing:
+        return {"message": "Request already sent"}
+
+    req = UserRequest(name=data.name, email=data.email)
+    db.add(req)
+    db.commit()
+    return {"message": "Request sent"}
+
+@app.get("/admin/requests")
+def get_requests(db: Session = Depends(get_db)):
+    return db.query(UserRequest).filter_by(status="pending").all()
 
 # @app.post("/login", response_model=Token)
 # async def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -150,6 +173,24 @@ async def login(credentials: LoginRequest):
 #     )
 #     return {"access_token": access_token, "token_type": "bearer"}
 
+@app.post("/admin/approve/{request_id}")
+def approve_request(request_id: int, db: Session = Depends(get_db)):
+    req = db.query(UserRequest).get(request_id)
+    if not req:
+        return {"error": "Not found"}
+
+    req.status = "approved"
+
+    # create real user
+    new_user = User(
+        username=req.email,
+        hashed_password=get_password_hash("temporary123")
+    )
+    db.add(new_user)
+    db.commit()
+
+    return {"message": "User approved"}
+
 
 @app.get("/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
@@ -160,6 +201,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 @app.get("/")
 def home():
     return {"message": "Inventory System Running"}
+
 
 
 # ======================== Products Routes ========================

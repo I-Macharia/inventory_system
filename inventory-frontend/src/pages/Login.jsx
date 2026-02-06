@@ -72,6 +72,12 @@ export default function Login() {
             </Button>
           </form>
         </CardContent>
+        <p className="text-center text-sm text-gray-600">
+          Don't have access?{' '}
+          <a href="/Registration" className="text-blue-600 hover:text-blue-700 font-medium">
+            Request access here
+          </a>
+        </p>
       </Card>
     </div>
   );

@@ -29,46 +29,7 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
-  // const login = async (username, password) => {
-  //   try {
-  //     // Send JSON instead of FormData
-  //     const response = await api.post('/login', {
-  //       username,
-  //       password
-  //     }, {
-  //       headers: {
-  //         'Content-Type': 'application/x-www-form-urlencoded'
-  //       }
-  //     });
-      
-  //     const token = response.data.access_token;
-
-  //     localStorage.setItem('token', token);
-  //     setUser({ username });
-  //     setIsAuthenticated(true);
-
-  //     return { success: true };
-  //   } catch (error) {
-  //     console.error('Login failed:', error);
-      
-  //     let errorMessage = 'Login failed';
-  //     if (error.response?.data?.detail) {
-  //       const detail = error.response.data.detail;
-  //       if (Array.isArray(detail)) {
-  //         errorMessage = detail[0]?.msg || 'Validation error';
-  //       } else if (typeof detail === 'string') {
-  //         errorMessage = detail;
-  //       }
-  //     }
-
-  //     return {
-  //       success: false,
-  //       error: errorMessage
-  //     };
-  //   }
-  // };
-
-    const login = async (username, password) => {
+  const login = async (username, password) => {
     try {
       const response = await api.post('/login', {
         username,
@@ -107,6 +68,10 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setIsAuthenticated(false);
   };
+  
+const requestAccess = async (name, email) => {
+  await api.post("/auth/request-access", { name, email });
+};
 
   return (
     <AuthContext.Provider value={{ 
@@ -114,7 +79,8 @@ export const AuthProvider = ({ children }) => {
       isAuthenticated, 
       isLoading,
       login,
-      logout
+      logout,
+      requestAccess
     }}>
       {children}
     </AuthContext.Provider>

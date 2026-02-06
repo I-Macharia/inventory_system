@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44client";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import * as pdfjsLib from "pdfjs-dist";
 import { 
   Upload, 
   FileText, 
@@ -11,7 +12,8 @@ import {
   AlertCircle,
   Plus,
   Trash2,
-  Store
+  Store,
+  Edit2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,16 +36,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import PageHeader from "@/components/common/pageHeader";
-import ShopTypeBadge from "@/components/shop/ShopTypeBadge";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 export default function UploadInvoice() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   
-  const [step, setStep] = useState(1); // 1: upload, 2: review, 3: confirm
+  const [step, setStep] = useState(1);
   const [uploading, setUploading] = useState(false);
-  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
+  const [uploadedFileName, setUploadedFileName] = useState(null);
   
   const [invoiceData, setInvoiceData] = useState({
     invoice_number: "",
@@ -65,7 +68,76 @@ export default function UploadInvoice() {
 
   const selectedShop = shops.find(s => s.id === invoiceData.shop_id);
 
-  // Handle file upload and extraction
+  // Parse GPM Invoice PDF
+  const extractFromGPMPDF = async (file) => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = "";
+
+      // Extract text from all pages
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(" ");
+        fullText += pageText + "\n";
+      }
+
+      // Extract invoice number (format: GPM-XXXX)
+      const invoiceMatch = fullText.match(/GPM-(\d+)/i);
+      const invoiceNumber = invoiceMatch ? `GPM-${invoiceMatch[1]}` : "";
+
+      // Extract date (format: DD/MM/YYYY)
+      const dateMatch = fullText.match(/DATE[:\s]+(\d{1,2}\/\d{1,2}\/\d{4})/i);
+      let invoiceDate = new Date().toISOString().split("T")[0];
+      if (dateMatch) {
+        const [day, month, year] = dateMatch[1].split("/");
+        invoiceDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+
+      // Extract line items from table
+      // Format: GPM CODE | CODE | DESCRIPTION | QTY | RATE | AMOUNT
+      const items = [];
+      
+      // Look for the table header row
+      const tableStartMatch = fullText.match(/GPM\s+CODE\s+CODE\s+DESCRIPTION\s+QTY\s+RATE\s+AMOUNT/i);
+      if (tableStartMatch) {
+        // Find all item rows (GPM CODE pattern followed by numbers and description)
+        const itemRegex = /(\d{10,})\s+(\w+)\s+([A-Z\s]+?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/g;
+        let match;
+        
+        while ((match = itemRegex.exec(fullText)) !== null) {
+          // Skip commission rows
+          if (match[3].toLowerCase().includes("commission")) continue;
+          
+          const gpmCode = match[1];
+          const code = match[2];
+          const description = match[3].trim();
+          const quantity = parseFloat(match[4]);
+          const rate = parseFloat(match[5]);
+          const amount = parseFloat(match[6]);
+
+          // Validate extracted data
+          if (quantity > 0 && rate > 0 && description.length > 2) {
+            items.push({
+              product_id: "",
+              gpm_code: gpmCode,
+              description: description.replace(/\s+/g, " "),
+              quantity: Math.round(quantity),
+              unit_price: rate,
+              line_total: amount,
+            });
+          }
+        }
+      }
+
+      return { invoiceNumber, invoiceDate, items };
+    } catch (err) {
+      console.error("PDF extraction error:", err);
+      return { invoiceNumber: "", invoiceDate: new Date().toISOString().split("T")[0], items: [] };
+    }
+  };
+
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -74,84 +146,42 @@ export default function UploadInvoice() {
     setError(null);
 
     try {
-      // Upload file
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setInvoiceData(prev => ({ ...prev, file_url }));
-
-      // Extract data from invoice
-      setProcessing(true);
-      const result = await base44.integrations.Core.ExtractDataFromUploadedFile({
-        file_url,
-        json_schema: {
-          type: "object",
-          properties: {
-            invoice_number: { type: "string" },
-            shop_name: { type: "string" },
-            invoice_date: { type: "string" },
-            items: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  gpm_code: { type: "string" },
-                  item_code: { type: "string" },
-                  description: { type: "string" },
-                  quantity: { type: "number" },
-                  unit_price: { type: "number" },
-                  line_total: { type: "number" }
-                }
-              }
-            },
-            total_amount: { type: "number" }
-          }
-        }
-      });
-
-      if (result.status === "success" && result.output) {
-        const extracted = result.output;
-        
-        // Find matching shop
-        let matchedShopId = "";
-        if (extracted.shop_name) {
-          const matchedShop = shops.find(s => 
-            s.name.toLowerCase().includes(extracted.shop_name.toLowerCase()) ||
-            extracted.shop_name.toLowerCase().includes(s.name.toLowerCase())
-          );
-          if (matchedShop) matchedShopId = matchedShop.id;
-        }
-
-        setInvoiceData(prev => ({
-          ...prev,
-          invoice_number: extracted.invoice_number || prev.invoice_number,
-          shop_id: matchedShopId || prev.shop_id,
-          invoice_date: extracted.invoice_date || prev.invoice_date,
-          items: (extracted.items || []).map(item => ({
-            ...item,
-            product_id: findProductId(item.gpm_code, item.item_code, item.description),
-          })),
-          total_amount: extracted.total_amount,
-        }));
-        
-        setStep(2);
-      } else {
-        setError("Could not extract data from invoice. Please enter manually.");
-        setStep(2);
+      const fileName = file.name.toLowerCase();
+      
+      if (!fileName.endsWith(".pdf")) {
+        setError("Please upload a PDF invoice");
+        setUploading(false);
+        return;
       }
+
+      setUploadedFileName(file.name);
+      
+      let extractedData = { invoiceNumber: "", invoiceDate: new Date().toISOString().split("T")[0], items: [] };
+
+      if (fileName.endsWith(".pdf")) {
+        extractedData = await extractFromGPMPDF(file);
+      }
+
+      if (!extractedData.invoiceNumber || extractedData.items.length === 0) {
+        setError("Could not extract invoice data. Please check the PDF format and try again.");
+        setUploading(false);
+        return;
+      }
+
+      setInvoiceData(prev => ({ 
+        ...prev, 
+        invoice_number: extractedData.invoiceNumber,
+        invoice_date: extractedData.invoiceDate,
+        items: extractedData.items,
+        file_url: file.name
+      }));
+
+      setStep(2);
     } catch (err) {
-      setError("Failed to process invoice: " + err.message);
+      setError("Failed to process file: " + err.message);
     } finally {
       setUploading(false);
-      setProcessing(false);
     }
-  };
-
-  const findProductId = (gpmCode, itemCode, description) => {
-    const product = products.find(p => 
-      (gpmCode && p.gpm_code === gpmCode) ||
-      (itemCode && p.item_code === itemCode) ||
-      (description && p.description?.toLowerCase() === description?.toLowerCase())
-    );
-    return product?.id || "";
   };
 
   const addItem = () => {
@@ -173,13 +203,11 @@ export default function UploadInvoice() {
       const newItems = [...prev.items];
       newItems[index] = { ...newItems[index], [field]: value };
       
-      // Auto-calculate line total
       if (field === "quantity" || field === "unit_price") {
         newItems[index].line_total = 
           (newItems[index].quantity || 0) * (newItems[index].unit_price || 0);
       }
       
-      // If product selected, populate details
       if (field === "product_id" && value) {
         const product = products.find(p => p.id === value);
         if (product) {
@@ -207,15 +235,14 @@ export default function UploadInvoice() {
     return { subtotal, total: subtotal };
   };
 
-  // Submit invoice
   const submitMutation = useMutation({
     mutationFn: async () => {
       const shop = shops.find(s => s.id === invoiceData.shop_id);
       if (!shop) throw new Error("Please select a shop");
+      if (invoiceData.items.length === 0) throw new Error("Please add at least one item");
 
       const totals = calculateTotals();
       
-      // Create invoice
       const invoice = await base44.entities.Invoice.create({
         invoice_number: invoiceData.invoice_number,
         shop_id: shop.id,
@@ -230,51 +257,51 @@ export default function UploadInvoice() {
         status: "confirmed",
       });
 
-      // Create invoice items and update stock
       for (const item of invoiceData.items) {
         let productId = item.product_id;
+        let product = products.find(p => p.id === productId);
         
-        // Create product if doesn't exist
         if (!productId && item.description) {
           const newProduct = await base44.entities.Product.create({
             gpm_code: item.gpm_code || "",
+            item_code: item.gpm_code || "",
             description: item.description,
             unit_price: item.unit_price,
             master_stock: 0,
             total_consignment: 0,
+            total_sold: 0,
             status: "active",
           });
           productId = newProduct.id;
+          product = newProduct;
         }
 
         if (!productId) continue;
 
-        // Create invoice item
         await base44.entities.InvoiceItem.create({
           invoice_id: invoice.id,
           invoice_number: invoice.invoice_number,
           product_id: productId,
-          product_code: item.gpm_code,
-          product_description: item.description,
+          product_code: item.gpm_code || product?.gpm_code || "",
+          product_description: item.description || product?.description || "",
           quantity: item.quantity,
           unit_price: item.unit_price,
           line_total: item.line_total,
         });
 
-        const product = products.find(p => p.id === productId);
-        
         if (shop.type === "normal") {
-          // Direct sale - reduce master stock
+          const newMasterStock = Math.max(0, (product?.master_stock || 0) - item.quantity);
+          const newTotalSold = (product?.total_sold || 0) + item.quantity;
+
           await base44.entities.Product.update(productId, {
-            master_stock: Math.max(0, (product?.master_stock || 0) - item.quantity),
-            total_sold: (product?.total_sold || 0) + item.quantity,
+            master_stock: newMasterStock,
+            total_sold: newTotalSold,
           });
 
-          // Record stock movement
           await base44.entities.StockMovement.create({
             product_id: productId,
-            product_code: item.gpm_code,
-            product_description: item.description,
+            product_code: item.gpm_code || product?.gpm_code || "",
+            product_description: item.description || product?.description || "",
             movement_type: "dispatch_normal",
             quantity: -item.quantity,
             reference_type: "invoice",
@@ -282,16 +309,18 @@ export default function UploadInvoice() {
             reference_number: invoice.invoice_number,
             shop_id: shop.id,
             shop_name: shop.name,
-            balance_after: Math.max(0, (product?.master_stock || 0) - item.quantity),
+            balance_after: newMasterStock,
+            notes: `Dispatched to ${shop.name}`,
           });
         } else {
-          // Consignment - move to consignment stock
+          const newMasterStock = Math.max(0, (product?.master_stock || 0) - item.quantity);
+          const newTotalConsignment = (product?.total_consignment || 0) + item.quantity;
+
           await base44.entities.Product.update(productId, {
-            master_stock: Math.max(0, (product?.master_stock || 0) - item.quantity),
-            total_consignment: (product?.total_consignment || 0) + item.quantity,
+            master_stock: newMasterStock,
+            total_consignment: newTotalConsignment,
           });
 
-          // Find or create consignment stock record
           const existingConsignment = await base44.entities.ConsignmentStock.filter({
             shop_id: shop.id,
             product_id: productId,
@@ -306,17 +335,16 @@ export default function UploadInvoice() {
               shop_id: shop.id,
               shop_name: shop.name,
               product_id: productId,
-              product_code: item.gpm_code,
-              product_description: item.description,
+              product_code: item.gpm_code || product?.gpm_code || "",
+              product_description: item.description || product?.description || "",
               quantity: item.quantity,
             });
           }
 
-          // Record stock movement
           await base44.entities.StockMovement.create({
             product_id: productId,
-            product_code: item.gpm_code,
-            product_description: item.description,
+            product_code: item.gpm_code || product?.gpm_code || "",
+            product_description: item.description || product?.description || "",
             movement_type: "dispatch_consignment",
             quantity: -item.quantity,
             reference_type: "invoice",
@@ -324,7 +352,7 @@ export default function UploadInvoice() {
             reference_number: invoice.invoice_number,
             shop_id: shop.id,
             shop_name: shop.name,
-            balance_after: Math.max(0, (product?.master_stock || 0) - item.quantity),
+            balance_after: newMasterStock,
             notes: "Stock moved to consignment",
           });
         }
@@ -335,6 +363,9 @@ export default function UploadInvoice() {
     onSuccess: (invoice) => {
       queryClient.invalidateQueries();
       navigate(createPageUrl("InvoiceDetails") + `?id=${invoice.id}`);
+    },
+    onError: (err) => {
+      setError(err.message);
     },
   });
 
@@ -355,7 +386,6 @@ export default function UploadInvoice() {
           </Alert>
         )}
 
-        {/* Step 1: Upload */}
         {step === 1 && (
           <Card className="p-8">
             <div className="text-center">
@@ -366,33 +396,34 @@ export default function UploadInvoice() {
                 Upload Invoice PDF
               </h2>
               <p className="text-slate-500 mb-6 max-w-md mx-auto">
-                Upload your invoice and we'll automatically extract the details. 
-                You can also enter details manually.
+                Upload your GPM invoice PDF and we'll automatically extract all details.
+                You can review and edit before confirming.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <label className="cursor-pointer">
                   <Input
                     type="file"
-                    accept=".pdf,.xlsx,.xls,.csv"
+                    accept=".pdf"
                     onChange={handleFileUpload}
                     className="hidden"
+                    disabled={uploading}
                   />
                   <Button 
                     asChild 
                     className="bg-slate-900 hover:bg-slate-800"
-                    disabled={uploading || processing}
+                    disabled={uploading}
                   >
                     <span>
-                      {uploading || processing ? (
+                      {uploading ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          {uploading ? "Uploading..." : "Processing..."}
+                          Extracting...
                         </>
                       ) : (
                         <>
                           <FileText className="w-4 h-4 mr-2" />
-                          Select File
+                          Select PDF
                         </>
                       )}
                     </span>
@@ -405,15 +436,28 @@ export default function UploadInvoice() {
                   Enter Manually
                 </Button>
               </div>
+
+              {uploadedFileName && (
+                <p className="text-sm text-slate-500 mt-4">
+                  Selected: <strong>{uploadedFileName}</strong>
+                </p>
+              )}
             </div>
           </Card>
         )}
 
-        {/* Step 2: Review & Edit */}
         {step === 2 && (
           <div className="space-y-6">
             <Card className="p-6">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Invoice Details</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-900">Invoice Details</h3>
+                {uploadedFileName && (
+                  <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                    <Edit2 className="w-3 h-3 inline mr-1" />
+                    Auto-extracted
+                  </span>
+                )}
+              </div>
               
               <div className="grid sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
@@ -440,16 +484,7 @@ export default function UploadInvoice() {
                     <SelectContent>
                       {shops.map(shop => (
                         <SelectItem key={shop.id} value={shop.id}>
-                          <span className="flex items-center gap-2">
-                            {shop.name}
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${
-                              shop.type === "consignment" 
-                                ? "bg-violet-100 text-violet-700" 
-                                : "bg-sky-100 text-sky-700"
-                            }`}>
-                              {shop.type}
-                            </span>
-                          </span>
+                          {shop.name} ({shop.type})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -482,8 +517,8 @@ export default function UploadInvoice() {
                     selectedShop.type === "consignment" ? "text-violet-800" : "text-sky-800"
                   }>
                     {selectedShop.type === "consignment" 
-                      ? "This is a consignment shop. Stock will be tracked as 'on consignment' (still owned by you) until confirmed sold."
-                      : "This is a normal shop. Stock will be marked as sold immediately upon confirming this invoice."
+                      ? "Consignment shop - stock remains yours until sold."
+                      : "Normal shop - stock will be marked as sold immediately."
                     }
                   </AlertDescription>
                 </Alert>
@@ -503,11 +538,11 @@ export default function UploadInvoice() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[200px]">Product</TableHead>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Qty</TableHead>
-                      <TableHead>Unit Price</TableHead>
-                      <TableHead>Total</TableHead>
+                      <TableHead className="min-w-[150px]">Product</TableHead>
+                      <TableHead className="w-24">GPM Code</TableHead>
+                      <TableHead className="w-20">Qty</TableHead>
+                      <TableHead className="w-24">Unit Price</TableHead>
+                      <TableHead className="w-24">Total</TableHead>
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -519,8 +554,8 @@ export default function UploadInvoice() {
                             value={item.product_id}
                             onValueChange={(val) => updateItem(index, "product_id", val)}
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select or type">
+                            <SelectTrigger className="text-xs">
+                              <SelectValue placeholder="Select">
                                 {item.description || "Select product"}
                               </SelectValue>
                             </SelectTrigger>
@@ -534,8 +569,8 @@ export default function UploadInvoice() {
                           </Select>
                           {!item.product_id && (
                             <Input
-                              className="mt-2"
-                              placeholder="Or enter new product name"
+                              className="mt-2 text-xs"
+                              placeholder="New product"
                               value={item.description || ""}
                               onChange={(e) => updateItem(index, "description", e.target.value)}
                             />
@@ -543,16 +578,17 @@ export default function UploadInvoice() {
                         </TableCell>
                         <TableCell>
                           <Input
-                            className="w-24"
+                            className="w-24 text-xs"
                             value={item.gpm_code || ""}
                             onChange={(e) => updateItem(index, "gpm_code", e.target.value)}
                             placeholder="Code"
+                            readOnly
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             type="number"
-                            className="w-20"
+                            className="w-20 text-xs"
                             value={item.quantity || ""}
                             onChange={(e) => updateItem(index, "quantity", parseInt(e.target.value) || 0)}
                           />
@@ -560,13 +596,14 @@ export default function UploadInvoice() {
                         <TableCell>
                           <Input
                             type="number"
-                            className="w-24"
+                            className="w-24 text-xs"
                             value={item.unit_price || ""}
                             onChange={(e) => updateItem(index, "unit_price", parseFloat(e.target.value) || 0)}
+                            step="0.01"
                           />
                         </TableCell>
-                        <TableCell className="font-medium">
-                          KES {(item.line_total || 0).toLocaleString()}
+                        <TableCell className="font-medium text-sm">
+                          {(item.line_total || 0).toFixed(2)}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -583,7 +620,7 @@ export default function UploadInvoice() {
                     {invoiceData.items.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8 text-slate-500">
-                          No items added. Click "Add Item" to start.
+                          No items. Click "Add Item" to start.
                         </TableCell>
                       </TableRow>
                     )}
@@ -594,9 +631,9 @@ export default function UploadInvoice() {
               {invoiceData.items.length > 0 && (
                 <div className="flex justify-end mt-4 pt-4 border-t">
                   <div className="text-right">
-                    <p className="text-slate-500">Total</p>
+                    <p className="text-slate-500 text-sm">Total Amount</p>
                     <p className="text-2xl font-bold text-slate-900">
-                      KES {totals.total.toLocaleString()}
+                      Ksh {totals.total.toFixed(2)}
                     </p>
                   </div>
                 </div>

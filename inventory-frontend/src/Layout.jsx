@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const adminNavItems = [
+  { name: "Home", page: "Landing", icon: LayoutDashboard },
   { name: "Dashboard", page: "Dashboard", icon: LayoutDashboard },
   { name: "Products", page: "Products", icon: Package },
   { name: "Shops", page: "Shops", icon: Store },

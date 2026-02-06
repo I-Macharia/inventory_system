@@ -8,6 +8,8 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from '@/pages/Login';
+import Landing from '@/pages/Landing';
+
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -33,14 +35,23 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      
-      <Route path="/" element={
+      <Route path="/dashboard" element={
+          <ProtectedRoute>
+            <LayoutWrapper currentPageName={mainPageKey}>
+              <MainPage />
+            </LayoutWrapper>
+          </ProtectedRoute>
+      } />
+
+      {/* <Route path="/" element={
         <ProtectedRoute>
           <LayoutWrapper currentPageName={mainPageKey}>
             <MainPage />
           </LayoutWrapper>
         </ProtectedRoute>
-      } />
+      } /> */}
+
+      <Route path="/" element={<Landing />} />
       
       {Object.entries(Pages).map(([path, Page]) => (
         <Route

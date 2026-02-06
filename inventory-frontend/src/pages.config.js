@@ -47,6 +47,7 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
+import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import InvoiceDetails from './pages/InvoiceDetails';
 import Invoices from './pages/Invoices';
@@ -66,9 +67,14 @@ import MyOrders from './pages/MyOrders';
 import OrderDetail from './pages/OrderDetail';
 import ManageOrders from './pages/ManageOrders';
 import __Layout from './Layout.jsx';
+import Registration from './pages/Registration';
+import Login from './pages/Login';
 
 
 export const PAGES = {
+    "Landing": Landing,
+    "Login": Login,
+    "Registration": Registration,
     "Dashboard": Dashboard,
     "InvoiceDetails": InvoiceDetails,
     "Invoices": Invoices,

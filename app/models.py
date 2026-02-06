@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, Date
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, Date, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from .database import Base
+from datetime import datetime, timezone
+
 
 
 
@@ -64,3 +66,27 @@ class ConsignmentSale(Base):
     product_id = Column(Integer, ForeignKey("products.id"))
     quantity = Column(Integer)
     date = Column(Date)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class UserRequest(Base):
+    __tablename__ = "user_requests"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False, unique=True)
+    status = Column(String, default="pending")  # pending / approved
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+
