@@ -1,9 +1,9 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import api from '@/api/client';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
-export const AuthProvider = ({ children }) => {
+export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -13,12 +13,12 @@ export const AuthProvider = ({ children }) => {
     const checkAuth = async () => {
       const token = localStorage.getItem('token');
       if (token) {
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         try {
           const response = await api.get('/me');
           setUser(response.data);
           setIsAuthenticated(true);
         } catch (error) {
-          console.error('Auth check failed:', error);
           localStorage.removeItem('token');
           setIsAuthenticated(false);
         }
@@ -30,68 +30,42 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (username, password) => {
-    try {
-      const response = await api.post('/login', {
-        username,
-        password
-      });
-      
-      const token = response.data.access_token;
+    const response = await api.post('/login', { username, password });
+    const token = response.data.access_token;
 
-      localStorage.setItem('token', token);
-      setUser({ username });
-      setIsAuthenticated(true);
+    localStorage.setItem('token', token);
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-      return { success: true };
-    } catch (error) {
-      console.error('Login failed:', error);
-      
-      let errorMessage = 'Login failed';
-      if (error.response?.data?.detail) {
-        const detail = error.response.data.detail;
-        if (Array.isArray(detail)) {
-          errorMessage = detail[0]?.msg || 'Validation error';
-        } else if (typeof detail === 'string') {
-          errorMessage = detail;
-        }
-      }
+    setUser({ username });
+    setIsAuthenticated(true);
 
-      return {
-        success: false,
-        error: errorMessage
-      };
-    }
+    return { success: true };
   };
+
 
   const logout = () => {
     localStorage.removeItem('token');
+    delete api.defaults.headers.common['Authorization'];
     setUser(null);
     setIsAuthenticated(false);
   };
+
+
+  return (
+    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
   
 const requestAccess = async (name, email) => {
   await api.post("/auth/request-access", { name, email });
 };
 
-  return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isAuthenticated, 
-      isLoading,
-      login,
-      logout,
-      requestAccess
-    }}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
-};
+}
 

@@ -5,11 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal
 from app import models
-from app.models import Product, Shop, MasterStock
+from app.models import (
+    Product, Shop, MasterStock, ConsignmentStock,
+    Invoice, InvoiceItem, ConsignmentSale,
+    UserRequest, User
+)
 from pydantic import BaseModel
 import pandas as pd
 from fastapi import UploadFile, File
-from app.models import Invoice, InvoiceItem, Shop, Product, MasterStock, ConsignmentStock, ConsignmentSale, UserRequest, User
 from datetime import date, datetime, timedelta
 from app.services.pdf_parser import parse_invoice_pdf
 from fastapi.templating import Jinja2Templates
@@ -21,6 +24,8 @@ from reportlab.lib.pagesizes import A4
 from fastapi.responses import FileResponse
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+
+
 
 # ======================== Auth Configuration ========================
 SECRET_KEY = "your-secret-key-change-this-in-production"
@@ -155,27 +160,10 @@ def request_access(data: AccessRequest, db: Session = Depends(get_db)):
 def get_requests(db: Session = Depends(get_db)):
     return db.query(UserRequest).filter_by(status="pending").all()
 
-# @app.post("/login", response_model=Token)
-# async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-#     """Login endpoint - returns JWT token"""
-#     user = FAKE_USERS.get(form_data.username)
-    
-#     if not user or user["password"] != form_data.password:
-#         raise HTTPException(
-#             status_code=401,
-#             detail="Incorrect username or password",
-#             headers={"WWW-Authenticate": "Bearer"},
-#         )
-    
-#     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-#     access_token = create_access_token(
-#         data={"sub": form_data.username}, expires_delta=access_token_expires
-#     )
-#     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/admin/approve/{request_id}")
 def approve_request(request_id: int, db: Session = Depends(get_db)):
-    req = db.query(UserRequest).get(request_id)
+    req = db.query(UserRequest).filter(UserRequest.id == request_id).first()
     if not req:
         return {"error": "Not found"}
 
@@ -320,6 +308,8 @@ def upload_invoice(file: UploadFile = File(...), db: Session = Depends(get_db), 
 
         if shop.type == "normal":
             stock = db.query(MasterStock).filter_by(product_id=product.id).first()
+            if stock.quantity < qty:
+                raise HTTPException(status_code=400, detail="Not enough master stock")
             stock.quantity -= qty
 
         else:
@@ -387,6 +377,8 @@ def record_sale(data: SaleInput, db: Session = Depends(get_db), current_user: di
 
     # Reduce master stock (now officially sold)
     master = db.query(MasterStock).filter_by(product_id=product.id).first()
+    if master.quantity < data.qty:
+        raise HTTPException(status_code=400, detail="Not enough master stock")
     master.quantity -= data.qty
 
     # Record sale
@@ -439,14 +431,15 @@ def log_user_activity(data: LogActivity, current_user: dict = Depends(get_curren
 
 templates = Jinja2Templates(directory="templates")
 
-@app.get("/")
-def dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
 
 @app.get("/stock")
-def master_stock_page(request: Request, db: Session = Depends(get_db)):
+def master_stock_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     stock = db.query(MasterStock).all()
-    return templates.TemplateResponse("stock.html", {"request": request, "stock": stock})
+    return templates.TemplateResponse("stock.html", {"request": request, "stock": stock, "current_user": current_user})
 
 # Exports
 

@@ -28,3 +28,7 @@ dist-ssr
 *.sw?
 
 .env
+
+
+UploadInvoice_1.jsx
+models_1.py
