@@ -24,22 +24,22 @@ export default function Login() {
       if (result.success) {
         navigate('/dashboard');
       } else {
-        setError(result.error || 'Login failed');
+        setError(result.error || 'Invalid username or password');
       }
     } catch (err) {
-      setError('An unexpected error occurred');
-      console.error(err);
+      setError('An unexpected error occurred. Please try again.');
+      console.error('Login error:', err);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Login</CardTitle>
-          <CardDescription>Enter your credentials</CardDescription>
+          <CardDescription>Enter your credentials to access the system</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -49,35 +49,43 @@ export default function Login() {
               </Alert>
             )}
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Username / Email
+              </label>
               <Input
-                placeholder="Username"
+                placeholder="Enter your username or email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={loading}
                 autoComplete="username"
+                required
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Password
+              </label>
               <Input
                 type="password"
-                placeholder="Password"
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
                 autoComplete="current-password"
+                required
               />
             </div>
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Logging in...' : 'Login'}
             </Button>
           </form>
+          <p className="text-center text-sm text-gray-600 mt-4">
+            Don't have access?{' '}
+            <a href="/Registration" className="text-blue-600 hover:text-blue-700 font-medium">
+              Request access here
+            </a>
+          </p>
         </CardContent>
-        <p className="text-center text-sm text-gray-600">
-          Don't have access?{' '}
-          <a href="/Registration" className="text-blue-600 hover:text-blue-700 font-medium">
-            Request access here
-          </a>
-        </p>
       </Card>
     </div>
   );

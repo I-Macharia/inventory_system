@@ -1,13 +1,5 @@
 import axios from "axios";
 
-/**
- * @typedef {Object} ApiClient
- * Axios instance configured for the Inventory System API
- */
-
-/**
- * @type {import('axios').AxiosInstance}
- */
 const api = axios.create({
   baseURL: "http://127.0.0.1:8000",
   headers: {
@@ -16,13 +8,18 @@ const api = axios.create({
 });
 
 // Add request interceptor to include JWT token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
-  return config;
-});
+);
 
 // Add response interceptor for error handling
 api.interceptors.response.use(
@@ -31,7 +28,12 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Token expired or invalid - redirect to login
       localStorage.removeItem("token");
-      window.location.href = "/login";
+      delete api.defaults.headers.common['Authorization'];
+      
+      // Only redirect if not already on login page
+      if (window.location.pathname !== '/login') {
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   }
