@@ -74,7 +74,7 @@ export default function Login() {
         </CardContent>
         <p className="text-center text-sm text-gray-600">
           Don't have access?{' '}
-          <a href="/Registration" className="text-blue-600 hover:text-blue-700 font-medium">
+          <a href="/registration" className="text-blue-600 hover:text-blue-700 font-medium">
             Request access here
           </a>
         </p>

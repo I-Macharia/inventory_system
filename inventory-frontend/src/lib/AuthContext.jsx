@@ -3,16 +3,24 @@ import api from '@/api/client';
 
 const AuthContext = createContext();
 
+const applyAuthHeader = (token) => {
+  if (token) {
+    api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    return;
+  }
+  delete api.defaults.headers.common.Authorization;
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check if user is already logged in on mount
   useEffect(() => {
     const checkAuth = async () => {
       const token = localStorage.getItem('token');
       if (token) {
+        applyAuthHeader(token);
         try {
           const response = await api.get('/me');
           setUser(response.data);
@@ -20,6 +28,7 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
           console.error('Auth check failed:', error);
           localStorage.removeItem('token');
+          applyAuthHeader(null);
           setIsAuthenticated(false);
         }
       }
@@ -35,17 +44,17 @@ export const AuthProvider = ({ children }) => {
         username,
         password
       });
-      
-      const token = response.data.access_token;
 
+      const token = response.data.access_token;
       localStorage.setItem('token', token);
+      applyAuthHeader(token);
       setUser({ username });
       setIsAuthenticated(true);
 
       return { success: true };
     } catch (error) {
       console.error('Login failed:', error);
-      
+
       let errorMessage = 'Login failed';
       if (error.response?.data?.detail) {
         const detail = error.response.data.detail;
@@ -65,18 +74,20 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('token');
+    applyAuthHeader(null);
     setUser(null);
     setIsAuthenticated(false);
   };
-  
-const requestAccess = async (name, email) => {
-  await api.post("/auth/request-access", { name, email });
-};
+
+  const requestAccess = async (name, email) => {
+    const response = await api.post('/auth/request-access', { name, email });
+    return response.data;
+  };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isAuthenticated, 
+    <AuthContext.Provider value={{
+      user,
+      isAuthenticated,
       isLoading,
       login,
       logout,

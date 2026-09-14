@@ -8,6 +8,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from '@/pages/Login';
+import Registration from '@/pages/Registration';
 import Landing from '@/pages/Landing';
 
 
@@ -20,9 +21,8 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   : <>{children}</>;
 
 const AuthenticatedApp = () => {
-  const { isLoading } = useAuth();
+  const { isLoading, isAuthenticated } = useAuth();
 
-  // Show loading spinner while checking auth
   if (isLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
@@ -31,10 +31,13 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Render the main app with protected routes
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
+      <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} />
+      <Route path="/registration" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Registration />} />
+      <Route path="/Login" element={<Navigate to="/login" replace />} />
+      <Route path="/Registration" element={<Navigate to="/registration" replace />} />
       <Route path="/dashboard" element={
           <ProtectedRoute>
             <LayoutWrapper currentPageName={mainPageKey}>
@@ -43,16 +46,6 @@ const AuthenticatedApp = () => {
           </ProtectedRoute>
       } />
 
-      {/* <Route path="/" element={
-        <ProtectedRoute>
-          <LayoutWrapper currentPageName={mainPageKey}>
-            <MainPage />
-          </LayoutWrapper>
-        </ProtectedRoute>
-      } /> */}
-
-      <Route path="/" element={<Landing />} />
-      
       {Object.entries(Pages).map(([path, Page]) => (
         <Route
           key={path}
@@ -66,7 +59,7 @@ const AuthenticatedApp = () => {
           }
         />
       ))}
-      
+
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

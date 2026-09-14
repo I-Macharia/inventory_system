@@ -27,9 +27,8 @@ export default function Registration() {
       setName('');
       setEmail('');
 
-      // Redirect to login after 2 seconds
       setTimeout(() => {
-        navigate('/Login');
+        navigate('/login');
       }, 2000);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to send request');
@@ -88,7 +87,7 @@ export default function Registration() {
 
             <p className="text-center text-sm text-gray-600">
               Already have access?{' '}
-              <a href="/Login" className="text-blue-600 hover:text-blue-700 font-medium">
+              <a href="/login" className="text-blue-600 hover:text-blue-700 font-medium">
                 Login here
               </a>
             </p>

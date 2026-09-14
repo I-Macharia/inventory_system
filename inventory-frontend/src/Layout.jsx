@@ -13,7 +13,8 @@ import {
   Menu,
   X,
   ChevronRight,
-  ShoppingBag
+  ShoppingBag,
+  UserPlus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ const adminNavItems = [
   { name: "Invoices", page: "Invoices", icon: FileText },
   { name: "Stock Movements", page: "StockMovements", icon: TrendingUp },
   { name: "Reports", page: "Reports", icon: BarChart3 },
+  { name: "Manage Users", page: "ManageUsers", icon: UserPlus },
   { name: "Manage Orders", page: "ManageOrders", icon: FileText },
 ];
 

@@ -66,6 +66,7 @@ import OrderConfirmation from './pages/OrderConfirmation';
 import MyOrders from './pages/MyOrders';
 import OrderDetail from './pages/OrderDetail';
 import ManageOrders from './pages/ManageOrders';
+import ManageUsers from './pages/ManageUsers';
 import __Layout from './Layout.jsx';
 import Registration from './pages/Registration';
 import Login from './pages/Login';
@@ -93,6 +94,7 @@ export const PAGES = {
     "MyOrders": MyOrders,
     "OrderDetail": OrderDetail,
     "ManageOrders": ManageOrders,
+    "ManageUsers": ManageUsers,
 }
 
 export const pagesConfig = {

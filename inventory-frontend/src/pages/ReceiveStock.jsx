@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44client";
+import api from "@/api/client";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { 
@@ -10,7 +11,8 @@ import {
   Loader2, 
   CheckCircle,
   Upload,
-  FileText
+  FileText,
+  Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +47,10 @@ export default function ReceiveStock() {
     notes: "",
     items: [],
   });
+  const [stockFile, setStockFile] = useState(null);
+  const [stockImportMessage, setStockImportMessage] = useState("");
+  const [stockImportError, setStockImportError] = useState("");
+  const [isImportingStock, setIsImportingStock] = useState(false);
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
@@ -91,6 +97,62 @@ export default function ReceiveStock() {
   const totalValue = receiptData.items.reduce((sum, item) => 
     sum + ((item.quantity || 0) * (item.cost_price || 0)), 0
   );
+
+  const handleStockTemplateDownload = async () => {
+    try {
+      const response = await api.get("/stock/import-template", {
+        responseType: "blob",
+      });
+
+      const blob = new Blob([response.data], {
+        type: response.headers["content-type"] || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "stock_import_template.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setStockImportMessage("Template downloaded. Fill it in and upload the file when ready.");
+      setStockImportError("");
+    } catch (error) {
+      const detail = error.response?.data?.detail || "Template download failed.";
+      setStockImportError(detail);
+    }
+  };
+
+  const handleStockExcelImport = async () => {
+    if (!stockFile) {
+      setStockImportError("Please choose an Excel or CSV file first.");
+      return;
+    }
+
+    setIsImportingStock(true);
+    setStockImportError("");
+    setStockImportMessage("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", stockFile);
+      const response = await api.post("/stock/import", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      setStockImportMessage(
+        `Imported ${response.data.rows_processed} rows: ${response.data.created} created, ${response.data.updated} updated, ${response.data.skipped} skipped.`
+      );
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["masterStock"] });
+      setStockFile(null);
+    } catch (error) {
+      const detail = error.response?.data?.detail || "Stock import failed.";
+      setStockImportError(detail);
+    } finally {
+      setIsImportingStock(false);
+    }
+  };
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -164,6 +226,57 @@ export default function ReceiveStock() {
         />
 
         <div className="space-y-6">
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Bulk Stock Update</h3>
+              <Download className="w-5 h-5 text-slate-400" />
+            </div>
+            <div className="flex flex-col gap-4 md:flex-row md:items-end">
+              <div className="flex-1">
+                <Label htmlFor="stock-file">Excel / CSV file</Label>
+                <Input
+                  id="stock-file"
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={(event) => setStockFile(event.target.files?.[0] || null)}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleStockTemplateDownload}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Download template
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleStockExcelImport}
+                  disabled={!stockFile || isImportingStock}
+                >
+                  {isImportingStock ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Update stock list
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+            {stockImportMessage && (
+              <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                {stockImportMessage}
+              </div>
+            )}
+            {stockImportError && (
+              <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {stockImportError}
+              </div>
+            )}
+          </Card>
+
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Receipt Details</h3>
             

@@ -1,37 +1,45 @@
 import axios from "axios";
 
-/**
- * @typedef {Object} ApiClient
- * Axios instance configured for the Inventory System API
- */
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-/**
- * @type {import('axios').AxiosInstance}
- */
 const api = axios.create({
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Add request interceptor to include JWT token
+const applyAuthHeader = (token) => {
+  if (token) {
+    api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    return;
+  }
+  delete api.defaults.headers.common.Authorization;
+};
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  } else {
+    delete config.headers.Authorization;
   }
   return config;
 });
 
-// Add response interceptor for error handling
+const storedToken = localStorage.getItem("token");
+if (storedToken) {
+  applyAuthHeader(storedToken);
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid - redirect to login
       localStorage.removeItem("token");
-      window.location.href = "/login";
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   }
