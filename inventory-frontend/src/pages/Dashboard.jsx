@@ -20,6 +20,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import StatsCard from "@/components/dashboard/StatsCard";
 import PageHeader from "@/components/common/pageHeader";
 import StockBadge from "@/components/stock/StockBadge";
+import UserRequestsCard from "@/components/admin/UserRequestsCard";
+
+
 
 export default function Dashboard() {
   const { data: products = [], isLoading: loadingProducts } = useQuery({
@@ -94,6 +97,10 @@ export default function Dashboard() {
             subtitle={`${consignmentShops} consignment shops`}
             icon={Store}
           />
+        </div>
+
+        <div className="mb-8">
+          <UserRequestsCard />
         </div>
 
         {/* Low Stock Alert */}

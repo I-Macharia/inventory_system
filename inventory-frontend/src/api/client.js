@@ -25,7 +25,7 @@ api.interceptors.request.use((config) => {
     delete config.headers.Authorization;
   }
   return config;
-});
+}, (error) => Promise.reject(error));
 
 const storedToken = localStorage.getItem("token");
 if (storedToken) {
@@ -37,6 +37,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
+      applyAuthHeader(null);
       if (window.location.pathname !== "/login") {
         window.location.href = "/login";
       }
